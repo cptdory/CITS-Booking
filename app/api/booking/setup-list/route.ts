@@ -23,7 +23,7 @@ async function getAccessToken() {
   }
 
   // 🔄 Otherwise, call the token route to refresh
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL";
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
   const tokenRes = await fetch(`${baseUrl}/api/auth/token`);
   if (!tokenRes.ok) throw new Error(`Failed to refresh token (${tokenRes.status})`);
   const data = await tokenRes.json();
@@ -149,4 +149,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Server error", message: err.message }, { status: 500 });
   }
 }
+
 
