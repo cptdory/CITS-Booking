@@ -2,14 +2,22 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 
+let memoryCache: { access_token: string; expires_at: number } | null = null;
+
 // ===== Helper: Fetch or refresh token =====
 async function getAccessToken() {
+  const isVercel = !!process.env.VERCEL;
   const cacheFile = path.join(process.cwd(), "app/api/auth/cache/token_cache.json");
 
-  // ✅ If cache exists and still valid
-  if (fs.existsSync(cacheFile)) {
+  // ✅ Use memory cache on Vercel
+  if (isVercel) {
+    if (memoryCache && Date.now() < memoryCache.expires_at) {
+      return memoryCache.access_token;
+    }
+  } else if (fs.existsSync(cacheFile)) {
+    // ✅ Local file cache
     const cache = JSON.parse(fs.readFileSync(cacheFile, "utf-8"));
-    if (cache.access_token && cache.expires_at && Date.now() < cache.expires_at) {
+    if (cache.access_token && Date.now() < cache.expires_at) {
       return cache.access_token;
     }
   }
@@ -17,11 +25,17 @@ async function getAccessToken() {
   // 🔄 Otherwise, call the token route to refresh
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
   const tokenRes = await fetch(`${baseUrl}/api/auth/token`);
-  if (!tokenRes.ok) {
-    throw new Error(`Failed to refresh token (${tokenRes.status})`);
-  }
+  if (!tokenRes.ok) throw new Error(`Failed to refresh token (${tokenRes.status})`);
   const data = await tokenRes.json();
-  if (!data.access_token) throw new Error("Token route returned no token");
+
+  // Store in memory cache if Vercel
+  if (isVercel && data.access_token) {
+    memoryCache = {
+      access_token: data.access_token,
+      expires_at: Date.now() + 1000 * 60 * 30, // fallback 30min
+    };
+  }
+
   return data.access_token;
 }
 
@@ -36,14 +50,13 @@ async function fetchBusinessCentralData(accessToken: string, retry = true): Prom
   const res = await fetch(url, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${accessToken}`,
-      "Accept": "application/json",
-      "Content-Type": "application/json"
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
     },
-    body: ""
+    body: "",
   });
 
-  // 🔁 If token expired/invalid, refresh and retry once
   if ((res.status === 401 || res.status === 403) && retry) {
     const newToken = await getAccessToken();
     return await fetchBusinessCentralData(newToken, false);
@@ -55,7 +68,7 @@ async function fetchBusinessCentralData(accessToken: string, retry = true): Prom
   }
 
   const json = await res.json();
-  if (!json || !json.value) throw new Error("Invalid JSON from Business Central");
+  if (!json?.value) throw new Error("Invalid JSON from Business Central");
 
   const value = json.value;
   if (typeof value === "string") {
@@ -79,13 +92,12 @@ export async function GET() {
   }
 }
 
-// ===== POST (for DataTables) =====
+// ===== POST =====
 export async function POST(req: NextRequest) {
   try {
     const accessToken = await getAccessToken();
     const data = await fetchBusinessCentralData(accessToken);
 
-    // === DataTables handling ===
     const body = await req.formData();
     const draw = parseInt(body.get("draw") as string) || 0;
     const start = parseInt(body.get("start") as string) || 0;
@@ -98,7 +110,6 @@ export async function POST(req: NextRequest) {
     const columns = ["Code", "Description", "Location"];
     const orderBy = columns[parseInt(orderColumnIndex)] || "Code";
 
-    // === Filter ===
     let filtered = data;
     if (search) {
       filtered = data.filter((item: any) =>
@@ -108,7 +119,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // === Sort ===
     filtered.sort((a: any, b: any) => {
       const valA = a[orderBy] || "";
       const valB = b[orderBy] || "";
@@ -118,7 +128,6 @@ export async function POST(req: NextRequest) {
         : valB.localeCompare(valA);
     });
 
-    // === Pagination ===
     const totalRecords = data.length;
     const filteredRecords = filtered.length;
     const paginated = filtered.slice(start, start + length);
