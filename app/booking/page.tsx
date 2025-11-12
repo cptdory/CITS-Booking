@@ -13,7 +13,7 @@ interface FormData {
 }
 
 interface SelectOption {
-  id: number;
+  id: string;
   name: string;
 }
 
@@ -21,7 +21,9 @@ export default function BookingPage() {
   const router = useRouter();
   const [userRole, setUserRole] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
-  
+  const [branches, setBranches] = useState<SelectOption[]>([]);
+  const [loadingBranches, setLoadingBranches] = useState(true);
+
   const [formData, setFormData] = useState<FormData>({
     branch: '',
     service: '',
@@ -31,7 +33,7 @@ export default function BookingPage() {
     selectedTime: ''
   });
 
-  // Check authentication and get user role
+  // ✅ Authentication check
   useEffect(() => {
     const isLoggedIn = localStorage.getItem('isLoggedIn');
     const role = localStorage.getItem('userRole');
@@ -45,30 +47,52 @@ export default function BookingPage() {
     }
   }, [router]);
 
-  // Sample data - replace with your actual data sources
-  const branches: SelectOption[] = [
-    { id: 1, name: 'Downtown Branch' },
-    { id: 2, name: 'Uptown Branch' },
-    { id: 3, name: 'Westside Branch' }
-  ];
+  // ✅ Fetch branches dynamically from your API
+  useEffect(() => {
+    const fetchBranches = async () => {
+      try {
+        const res = await fetch('/api/booking/setup-list');
+        if (!res.ok) throw new Error('Failed to fetch branches');
+        const json = await res.json();
+
+        const options =
+          (json.value || []).map((b: any) => ({
+            id: b.Code,
+            name: b.Description || b.Code,
+          })) || [];
+
+        setBranches(options);
+      } catch (error) {
+        console.error('Error fetching branches:', error);
+        // fallback mock data
+        setBranches([
+          { id: 'no', name: 'no data' },
+        ]);
+      } finally {
+        setLoadingBranches(false);
+      }
+    };
+
+    fetchBranches();
+  }, []);
 
   const services: SelectOption[] = [
-    { id: 1, name: 'Haircut' },
-    { id: 2, name: 'Massage' },
-    { id: 3, name: 'Consultation' },
-    { id: 4, name: 'Spa Treatment' }
+    { id: '1', name: 'Haircut' },
+    { id: '2', name: 'Massage' },
+    { id: '3', name: 'Consultation' },
+    { id: '4', name: 'Spa Treatment' },
   ];
 
   const staff: SelectOption[] = [
-    { id: 1, name: 'John Doe' },
-    { id: 2, name: 'Jane Smith' },
-    { id: 3, name: 'Mike Johnson' }
+    { id: '1', name: 'John Doe' },
+    { id: '2', name: 'Jane Smith' },
+    { id: '3', name: 'Mike Johnson' },
   ];
 
   const rooms: SelectOption[] = [
-    { id: 1, name: 'Room A' },
-    { id: 2, name: 'Room B' },
-    { id: 3, name: 'Room C' }
+    { id: '1', name: 'Room A' },
+    { id: '2', name: 'Room B' },
+    { id: '3', name: 'Room C' },
   ];
 
   const timeSlots: string[] = [
@@ -92,8 +116,7 @@ export default function BookingPage() {
 
   const handleSubmit = (e: React.MouseEvent<HTMLButtonElement>): void => {
     e.preventDefault();
-    
-    // Validate all fields
+
     if (!formData.branch || !formData.service || !formData.staff || 
         !formData.room || !formData.date || !formData.selectedTime) {
       alert('Please fill in all fields');
@@ -102,25 +125,14 @@ export default function BookingPage() {
 
     console.log('Booking Details:', formData);
     alert('Booking confirmed! Check console for details.');
-    
-    // Reset form or redirect as needed
   };
 
   const handleLogout = (): void => {
-    // Clear all session data
-    localStorage.removeItem('isLoggedIn');
-    localStorage.removeItem('userRole');
-    localStorage.removeItem('username');
-    
-    console.log('Logged out successfully');
-    
-    // Redirect to login page
+    localStorage.clear();
     router.push('/');
   };
 
   const handleAdminPanel = (): void => {
-    // Navigate to admin panel
-    console.log('Navigating to admin panel...');
     router.push('/admin');
   };
 
@@ -128,6 +140,7 @@ export default function BookingPage() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
       <div className="max-w-2xl mx-auto">
         <div className="bg-white rounded-2xl shadow-xl p-8">
+          {/* Header */}
           <div className="flex justify-between items-center mb-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-800 mb-2">Book an Appointment</h1>
@@ -153,24 +166,29 @@ export default function BookingPage() {
             </div>
           </div>
 
+          {/* Form */}
           <div className="space-y-6 mt-8">
             {/* Branch */}
             <div>
               <label htmlFor="branch" className="block text-sm font-medium text-gray-700 mb-2">
                 Branch Location
               </label>
-              <select
-                id="branch"
-                value={formData.branch}
-                onChange={(e) => handleInputChange('branch', e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition bg-white text-gray-900"
-                required
-              >
-                <option value="" disabled className="text-gray-400">Choose a branch...</option>
-                {branches.map((branch) => (
-                  <option key={branch.id} value={branch.id}>{branch.name}</option>
-                ))}
-              </select>
+              {loadingBranches ? (
+                <p className="text-gray-500">Loading branches...</p>
+              ) : (
+                <select
+                  id="branch"
+                  value={formData.branch}
+                  onChange={(e) => handleInputChange('branch', e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition bg-white text-gray-900"
+                  required
+                >
+                  <option value="" disabled>Choose a branch...</option>
+                  {branches.map((branch) => (
+                    <option key={branch.id} value={branch.id}>{branch.name}</option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {/* Service */}
@@ -185,7 +203,7 @@ export default function BookingPage() {
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition bg-white text-gray-900"
                 required
               >
-                <option value="" disabled className="text-gray-400">Choose a service...</option>
+                <option value="" disabled>Choose a service...</option>
                 {services.map((service) => (
                   <option key={service.id} value={service.id}>{service.name}</option>
                 ))}
@@ -204,7 +222,7 @@ export default function BookingPage() {
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition bg-white text-gray-900"
                 required
               >
-                <option value="" disabled className="text-gray-400">Choose a staff member...</option>
+                <option value="" disabled>Choose a staff member...</option>
                 {staff.map((member) => (
                   <option key={member.id} value={member.id}>{member.name}</option>
                 ))}
@@ -223,7 +241,7 @@ export default function BookingPage() {
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition bg-white text-gray-900"
                 required
               >
-                <option value="" disabled className="text-gray-400">Choose a room...</option>
+                <option value="" disabled>Choose a room...</option>
                 {rooms.map((room) => (
                   <option key={room.id} value={room.id}>{room.name}</option>
                 ))}
@@ -272,7 +290,7 @@ export default function BookingPage() {
               )}
             </div>
 
-            {/* Submit Button */}
+            {/* Submit */}
             <button
               type="button"
               onClick={handleSubmit}
