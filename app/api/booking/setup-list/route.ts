@@ -62,10 +62,17 @@ async function fetchBusinessCentralData(accessToken: string, retry = true): Prom
     return await fetchBusinessCentralData(newToken, false);
   }
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed request (${res.status}): ${text}`);
-  }
+if (!res.ok) {
+  const text = await res.text();
+  console.error("Business Central API error:", {
+    status: res.status,
+    statusText: res.statusText,
+    url,
+    response: text,
+  });
+  throw new Error(`Failed request (${res.status}): ${res.statusText} - ${text}`);
+}
+
 
   const json = await res.json();
   if (!json?.value) throw new Error("Invalid JSON from Business Central");
